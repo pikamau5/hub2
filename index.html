@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>reading list</title>
+
+  <style>
+    :root{
+      /* background */
+      --bg: #2f2f2f;
+      
+      --anim: 50ms;
+
+      /* UI */
+      --panel-hover: rgba(255,255,255,0.06);
+      --border: rgba(255,255,255,0.12);
+
+      /* text */
+      --text: #e8e8e8;
+      --muted: rgba(232,232,232,0.65);
+
+      /* accents */
+      --green: #33d17a;
+      --blue: #62a0ea;
+      --yellow: #f9c74f;
+      --red: #f38ba8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+
+      background: radial-gradient(
+        circle at top,
+        #3a3a3a 0%,
+        var(--bg) 100%
+      );
+      background-repeat: no-repeat;
+      background-size: 100% 100%;
+
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+                   "Liberation Mono", "Courier New", monospace;
+      line-height: 1.45;
+      padding: 32px 16px;
+    }
+
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 16px 0;
+      letter-spacing: 0.02em;
+    }
+
+    .status {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    details.item {
+      padding: 6px 8px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      transition: background var(--anim) ease;
+    }
+
+    details.item:hover,
+    details.item[open] {
+      background: var(--panel-hover);
+    }
+
+    summary {
+      list-style: none;
+      cursor: pointer;
+      outline: none;
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      padding: 2px 2px;
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .prompt {
+      white-space: nowrap;
+      font-size: 13px;
+      flex: 0 0 auto;
+    }
+
+    .type {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    .promptchar {
+      color: var(--muted);
+    }
+
+    .cmd {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-size: 13px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .meta {
+      display: flex;
+      gap: 10px;
+      flex: 0 0 auto;
+      white-space: nowrap;
+      font-size: 12px;
+      align-items: baseline;
+    }
+
+    .reldate {
+      color: var(--yellow);
+    }
+
+    .arrow {
+      color: var(--blue);
+      text-decoration: none;
+      font-size: 14px;
+      padding-left: 4px;
+    }
+
+    .arrow:hover {
+      text-decoration: underline;
+    }
+
+    .notes {
+      margin-top: 6px;
+      padding: 8px 10px 10px 10px;
+      border-top: 1px dashed var(--border);
+      font-size: 13px;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+
+    .notes-empty {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .error {
+      color: var(--red);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>reading list</h1>
+    <div id="status" class="status">Loading…</div>
+    <div id="list"></div>
+  </div>
+
+  <script>
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[c]));
+    }
+
+    function parseDate(iso) {
+      const t = Date.parse(iso);
+      return Number.isFinite(t) ? t : 0;
+    }
+
+function relativeDate(isoDateTime) {
+  // Accepts "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (or full ISO)
+  const then = new Date(isoDateTime);
+  if (isNaN(then)) return isoDateTime;
+
+  const now = new Date();
+
+  // Compare by local calendar day (midnight -> midnight)
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfThen  = new Date(then.getFullYear(), then.getMonth(), then.getDate());
+
+  const diffDays = Math.round((startOfToday - startOfThen) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+
+  const weeks = Math.floor(diffDays / 7);
+  if (weeks < 5) return `${weeks} week${weeks > 1 ? "s" : ""} ago`;
+
+  const months = Math.floor(diffDays / 30);
+  if (months < 12) return `${months} month${months > 1 ? "s" : ""} ago`;
+
+  const years = Math.floor(diffDays / 365);
+  return `${years} year${years > 1 ? "s" : ""} ago`;
+}
+
+    async function loadList() {
+      const statusEl = document.getElementById("status");
+      const listEl = document.getElementById("list");
+
+      try {
+        const manifestRes = await fetch("items/manifest.json", { cache: "no-store" });
+        if (!manifestRes.ok) throw new Error("Failed to load manifest.json");
+
+        const files = await manifestRes.json();
+        if (!Array.isArray(files)) {
+          throw new Error("manifest.json must be an array");
+        }
+
+        const items = await Promise.all(
+          files.map(async (file) => {
+            const res = await fetch(`items/${file}`, { cache: "no-store" });
+            if (!res.ok) throw new Error(`Failed to load ${file}`);
+            return res.json();
+          })
+        );
+
+        const cleaned = items
+          .filter(it => it && it.name && it.url && it.date && it.type)
+          .map(it => ({
+            name: String(it.name),
+            url: String(it.url),
+            date: String(it.date),
+            type: String(it.type),
+            notes: it.notes ? String(it.notes) : ""
+          }))
+          .sort((a, b) => parseDate(b.date) - parseDate(a.date));
+
+        statusEl.textContent = "";
+
+        if (cleaned.length === 0) {
+          statusEl.textContent = "No items yet.";
+          return;
+        }
+
+        for (const item of cleaned) {
+          const d = document.createElement("details");
+          d.className = "item";
+
+          const notesHtml = item.notes.trim()
+            ? escapeHtml(item.notes)
+            : `<span class="notes-empty">No notes</span>`;
+
+          d.innerHTML = `
+            <summary>
+              <div class="prompt">
+                <span class="type">${escapeHtml(item.type)}</span>
+                <span class="promptchar"> $</span>
+              </div>
+              <div class="cmd">${escapeHtml(item.name)}</div>
+              <div class="meta">
+                <span class="reldate" title="${escapeHtml(item.date)}">
+                  ${relativeDate(item.date)}
+                </span>
+                <a class="arrow"
+                   href="${escapeHtml(item.url)}"
+                   target="_blank"
+                   rel="noopener noreferrer">→</a>
+              </div>
+            </summary>
+            <div class="notes">${notesHtml}</div>
+          `;
+
+          listEl.appendChild(d);
+        }
+      } catch (err) {
+        statusEl.classList.add("error");
+        statusEl.textContent = "Could not load list: " + err.message;
+        console.error(err);
+      }
+    }
+
+    loadList();
+  </script>
+</body>
+</html>
