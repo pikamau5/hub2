@@ -1,0 +1,7 @@
+{
+  "name": "REPO_DIR = SCRIPT_DIR",
+  "url": "SCRIPT_DIR = Path(__file__).resolve().parent",
+  "date": "2026-01-03T22:01",
+  "type": "book",
+  "notes": ""
+}
